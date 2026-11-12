@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import LogoutButton from '@/app/components/LogoutButton';
 import ResearchManagement from './ResearchManagement';
+import EventQRManagement from './EventQRManagement';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,12 +40,15 @@ export default async function StaffDashboard() {
 
           <p className="text-white/75 mt-4 max-w-xl leading-7">
             Manage research submissions, monitor supervisor assignments,
-            and update student research records.
+            organize events, and track student attendance.
           </p>
         </section>
 
         {/* Research analytics and supervisor management */}
         <ResearchManagement />
+
+        {/* Event QR Code and Attendance Management */}
+        <EventQRManagement />
 
         <section className="mt-8 bg-[#1C1D22] border border-white/10 rounded-2xl p-6">
           <p className="text-xs text-gray-500 uppercase tracking-widest">
