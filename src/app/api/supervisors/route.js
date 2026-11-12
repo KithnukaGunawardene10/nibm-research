@@ -1,5 +1,6 @@
 import { sql } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,28 +29,43 @@ export async function GET() {
   }
 }
 
-// POST: Add a new supervisor
+//
+
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const user = await getCurrentUser();
 
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Please log in first.' },
+        { status: 401 }
+      );
+    }
+
+    if (user.status !== 'staff') {
+      return NextResponse.json(
+        { success: false, error: 'Only staff members can add supervisors.' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
     const supervisorName = body.supervisor_name?.trim();
 
     if (!supervisorName) {
-      return NextResponse.json({
-        success: false,
-        error: 'Supervisor name is required'
-      }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Supervisor name is required.' },
+        { status: 400 }
+      );
     }
 
     if (supervisorName.length > 150) {
-      return NextResponse.json({
-        success: false,
-        error: 'Supervisor name cannot exceed 150 characters'
-      }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Supervisor name cannot exceed 150 characters.' },
+        { status: 400 }
+      );
     }
 
-    // Insert supervisor, avoiding duplicates
     const inserted = await sql`
       INSERT INTO supervisors (supervisor_name)
       VALUES (${supervisorName})
@@ -57,7 +73,6 @@ export async function POST(request) {
       RETURNING id, supervisor_name
     `;
 
-    // If the supervisor already exists, retrieve the existing record
     if (inserted.length === 0) {
       const existing = await sql`
         SELECT id, supervisor_name
@@ -73,19 +88,22 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      alreadyExists: false,
-      message: 'Supervisor added successfully',
-      data: inserted[0]
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        alreadyExists: false,
+        message: 'Supervisor added successfully.',
+        data: inserted[0]
+      },
+      { status: 201 }
+    );
 
   } catch (error) {
     console.error('SUPERVISORS POST ERROR:', error);
 
-    return NextResponse.json({
-      success: false,
-      error: error.message
-    }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Unable to add supervisor.' },
+      { status: 500 }
+    );
   }
 }

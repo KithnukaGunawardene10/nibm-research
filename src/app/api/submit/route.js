@@ -1,92 +1,108 @@
 
-import { sql } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { sql } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
+    // Verify login
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Please log in first.' },
+        { status: 401 }
+      );
+    }
+
+    // Only students can submit
+    if (user.status !== 'student') {
+      return NextResponse.json(
+        { success: false, error: 'Only students can submit research details.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
-    const {
-      batch,
-      index_no,
-      supervisor_id,
-      research_title
-    } = body;
+    // Supervisor is optional
+    let supervisorId = null;
+    let supervisorName = 'Not assigned';
 
-    // Validate required fields
-    if (!batch || !index_no || !supervisor_id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Batch, Index No and Supervisor are required.'
-        },
-        { status: 400 }
-      );
+    if (
+      body.supervisor_id !== undefined &&
+      body.supervisor_id !== null &&
+      String(body.supervisor_id).trim() !== ''
+    ) {
+      supervisorId = Number(body.supervisor_id);
+
+      if (!Number.isInteger(supervisorId) || supervisorId <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid supervisor selection.' },
+          { status: 400 }
+        );
+      }
+
+      const supervisors = await sql`
+        SELECT id, supervisor_name
+        FROM supervisors
+        WHERE id = ${supervisorId}
+          AND is_active = TRUE
+        LIMIT 1
+      `;
+
+      if (supervisors.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Selected supervisor is unavailable.' },
+          { status: 404 }
+        );
+      }
+
+      supervisorName = supervisors[0].supervisor_name;
     }
 
     // Research title is optional
-    const cleanedResearchTitle =
-      typeof research_title === 'string' && research_title.trim()
-        ? research_title.trim()
+    const researchTitle =
+      typeof body.research_title === 'string' &&
+      body.research_title.trim()
+        ? body.research_title.trim()
         : null;
 
-    if (
-      cleanedResearchTitle &&
-      cleanedResearchTitle.length > 500
-    ) {
+    if (researchTitle && researchTitle.length > 500) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Research title cannot exceed 500 characters.'
+          error: 'Research title cannot exceed 500 characters.',
         },
         { status: 400 }
       );
     }
 
-    // Find student
-    const student = await sql`
-      SELECT
-        batch,
-        index_no,
-        student_name
+    // Get official student information from the database
+    const students = await sql`
+      SELECT batch, index_no, student_name
       FROM students
-      WHERE batch = ${batch}
-      AND index_no = ${index_no}
+      WHERE batch = ${user.batch}
+        AND index_no = ${user.index_no}
       LIMIT 1
     `;
 
-    if (student.length === 0) {
+    if (students.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Student not found.'
+          error: 'Student record not found. Please contact the administrator.',
         },
         { status: 404 }
       );
     }
 
-    // Find supervisor
-    const supervisor = await sql`
-      SELECT
-        id,
-        supervisor_name
-      FROM supervisors
-      WHERE id = ${Number(supervisor_id)}
-      LIMIT 1
-    `;
+    const student = students[0];
 
-    if (supervisor.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Selected supervisor not found.'
-        },
-        { status: 404 }
-      );
-    }
-
-    // Save submission
-    const savedSubmission = await sql`
+    // Insert submission
+    const result = await sql`
       INSERT INTO submissions (
         batch,
         index_no,
@@ -96,29 +112,32 @@ export async function POST(request) {
         research_title
       )
       VALUES (
-        ${student[0].batch},
-        ${student[0].index_no},
-        ${student[0].student_name},
-        ${supervisor[0].id},
-        ${supervisor[0].supervisor_name},
-        ${cleanedResearchTitle}
+        ${student.batch},
+        ${student.index_no},
+        ${student.student_name},
+        ${supervisorId},
+        ${supervisorName},
+        ${researchTitle}
       )
       RETURNING *
     `;
 
-    return NextResponse.json({
-      success: true,
-      message: 'Submission saved successfully!',
-      data: savedSubmission[0]
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Research details submitted successfully.',
+        data: result[0],
+      },
+      { status: 201 }
+    );
 
   } catch (error) {
-    console.error('SUBMISSION FAILURE:', error);
+    console.error('Research submission error:', error);
 
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Unable to save submission.'
+        error: 'Unable to save research details. Please try again.',
       },
       { status: 500 }
     );
