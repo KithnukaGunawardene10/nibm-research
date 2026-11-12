@@ -1,3 +1,4 @@
+
 import { sql } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
@@ -12,7 +13,7 @@ export async function POST(request) {
       research_title
     } = body;
 
-    // Required field validation
+    // Validate required fields
     if (!batch || !index_no || !supervisor_id) {
       return NextResponse.json(
         {
@@ -29,7 +30,10 @@ export async function POST(request) {
         ? research_title.trim()
         : null;
 
-    if (cleanedResearchTitle && cleanedResearchTitle.length > 500) {
+    if (
+      cleanedResearchTitle &&
+      cleanedResearchTitle.length > 500
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -39,9 +43,12 @@ export async function POST(request) {
       );
     }
 
-    // Find the student
+    // Find student
     const student = await sql`
-      SELECT batch, index_no, student_name
+      SELECT
+        batch,
+        index_no,
+        student_name
       FROM students
       WHERE batch = ${batch}
       AND index_no = ${index_no}
@@ -58,9 +65,11 @@ export async function POST(request) {
       );
     }
 
-    // Verify supervisor
+    // Find supervisor
     const supervisor = await sql`
-      SELECT id, supervisor_name
+      SELECT
+        id,
+        supervisor_name
       FROM supervisors
       WHERE id = ${Number(supervisor_id)}
       LIMIT 1
@@ -83,6 +92,7 @@ export async function POST(request) {
         index_no,
         student_name,
         supervisor_id,
+        supervisor_name,
         research_title
       )
       VALUES (
@@ -90,6 +100,7 @@ export async function POST(request) {
         ${student[0].index_no},
         ${student[0].student_name},
         ${supervisor[0].id},
+        ${supervisor[0].supervisor_name},
         ${cleanedResearchTitle}
       )
       RETURNING *
@@ -102,12 +113,12 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    console.error('Submission API error:', error);
+    console.error('SUBMISSION FAILURE:', error);
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Unable to save submission. Please try again.'
+        error: error.message || 'Unable to save submission.'
       },
       { status: 500 }
     );
